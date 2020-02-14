@@ -2,8 +2,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <time.h>
 
 #define M_VERSION "0.1.0"
+#define M_AUTHOR "Tomer Shechner"
+
+#define LEFT_ROTATE(x, c) (((x) << (c)) | ((x) >> (32 - (c))))
 
 static const uint32_t k[64] =
 {
@@ -33,25 +37,20 @@ static const uint32_t r[64] =
     6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21
 };
 
-#define LEFT_ROTATE(x, c) (((x) << (c)) | ((x) >> (32 - (c))))
-
-void to_bytes(uint32_t val, uint8_t *bytes)
+void to_bytes(const uint32_t val, uint8_t *bytes)
 {
     int i, amt;
-    for (i = 0, amt = 0; i < 4; ++i)
-    {
+    for (i = 0, amt = 0; i < 4; ++i, amt += 8)
         bytes[i] = (uint8_t)(val >> amt);
-        amt += 8;
-    }
 }
 
 uint32_t to_int32(const uint8_t *bytes)
 {
-    return ((uint32_t)bytes[0] << 0) |
-           ((uint32_t)bytes[1] << 8) | ((uint32_t)bytes[2] << 16) | ((uint32_t)bytes[3] << 24);
+    return ((uint32_t)bytes[0] << 0) | ((uint32_t)bytes[1] << 8) | ((uint32_t)bytes[2] << 16) |
+           ((uint32_t)bytes[3] << 24);
 }
 
-void md5(const uint8_t *initial_msg, size_t initial_len, uint8_t *digest)
+void md5(const uint8_t *initial_msg, const size_t initial_len, uint8_t *digest)
 {
     uint32_t h0, h1, h2, h3;
 
@@ -166,35 +165,77 @@ char *readfile(const char *filename)
     return buffer;
 }
 
-int main(int argc, char **argv)
+static int current_year(void)
 {
-    char *msg;
-    int i, j;
-    uint8_t result[16];
+    time_t t = time(NULL);
+    return localtime(&t)->tm_year + 1900;
+}
 
-    if (argc < 2)
-    {
-        printf("Usage: %s [-s str] [files]\n", argv[0]);
-        return -1;
-    }
+static void repl(void)
+{
+    char buf[512];
+    int i;
 
-    for (i = 1; i < argc; ++i)
+    printf("Z %s (C) %d by %s\n", M_VERSION, current_year(), M_AUTHOR);
+
+    for (;;)
     {
-        if ((msg = readfile(argv[i])) == NULL)
+        fputs(">>> ", stdout);
+
+        char *line = fgets(buf, sizeof(buf), stdin);
+
+        if (!line)
         {
-            fprintf(stderr, "Cannot read file '%s'\n", argv[i]);
-            continue;
+            puts("");
+            break;
         }
 
-        md5((uint8_t *)msg, strlen(msg), result);
+        if (*line != '\n')
+        {
+            uint8_t result[16];
 
-        printf("[%s] = ", argv[i]);
-        for (j = 0; j < 16; ++j)
-            printf("%2.2x", result[j]);
-        puts("");
+            buf[strcspn(buf, "\r\n")] = '\0';
+
+            md5((uint8_t *)buf, strlen(buf), result);
+
+            for (i = 0; i < 16; ++i)
+                printf("%2.2x", result[i]);
+            puts("");
+        }
+    }
+}
+
+int main(int argc, char **argv)
+{
+    if (argc == 1)
+        repl();
+    else
+    {
+        char *msg;
+        int i, j;
+        uint8_t result[16];
+
+        for (i = 1; i < argc; ++i)
+        {
+            if ((msg = readfile(argv[i])) == NULL)
+            {
+                fprintf(stderr, "Cannot read file '%s'\n", argv[i]);
+                continue;
+            }
+
+            md5((uint8_t *)msg, strlen(msg), result);
+
+            printf("[%s] = ", argv[i]);
+            for (j = 0; j < 16; ++j)
+                printf("%2.2x", result[j]);
+            puts("");
+        }
+
+        free(msg);
     }
 
-    free(msg);
+    // printf("Usage: %s [-s str] [files]\n", argv[0]);
+    // return -1;
 
     return 0;
 }
